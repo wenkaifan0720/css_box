@@ -1,0 +1,22 @@
+name: css_box_example
+description: A gallery of css_box's widgets, one for each CSS rule they state.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.10.4
+  flutter: ">=3.38.5"
+
+dependencies:
+  css_box:
+    path: ../
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^5.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

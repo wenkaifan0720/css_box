@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  test:
+    name: Flutter ${{ matrix.flutter }}
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.flutter == 'stable' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The tested range (pubspec.yaml's floor and tool/test_range.sh), plus
+        # the current stable as an early warning.
+        flutter: ['3.38.5', '3.47.6', 'stable']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ matrix.flutter != 'stable' && matrix.flutter || '' }}
+          cache: true
+      - run: flutter pub get
+      - name: Format
+        if: matrix.flutter == '3.38.5'
+        run: dart format --output=none --set-exit-if-changed lib test example benchmark tool
+      - run: flutter analyze --fatal-infos
+      - run: flutter test
+      # The shadow cut on the web renderer (README, shadows), as tool/test_range.sh
+      # runs it: the same file in a browser. The runner image ships Chrome.
+      - name: Web parity
+        if: matrix.flutter != 'stable'
+        run: flutter test --platform chrome test/*_parity_test.dart
+      # What pub.dev would refuse or warn on, before anyone publishes: a
+      # warning fails the step (exit 65).
+      - name: Publish dry run
+        if: matrix.flutter == '3.38.5'
+        run: flutter pub publish --dry-run
+      - name: Example
+        working-directory: example
+        run: |
+          flutter pub get
+          flutter test

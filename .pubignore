@@ -1,0 +1,6 @@
+# What is not part of the published package. A .pubignore replaces
+# .gitignore for this directory, so it names everything pub should leave
+# out: build output, tool caches and the lock file.
+.dart_tool/
+build/
+pubspec.lock
