@@ -558,17 +558,36 @@ class RenderFractionalConstraints extends RenderProxyBox with AsksGuarded, KeptU
     return BoxConstraints(minWidth: math.min(lo, hi), maxWidth: hi, minHeight: c.minHeight, maxHeight: c.maxHeight);
   }
 
-  @override
-  double computeMinIntrinsicHeight(double width) => guardedSize(
-    child,
-    () => child?.getMinIntrinsicHeight(_inner(BoxConstraints(maxWidth: width)).constrainWidth(width)) ?? 0.0,
-  );
+  /// THE WIDTH THE CHILD IS ASKED A HEIGHT AT is the width it is laid out
+  /// at in the room [width] offers: [performLayout] hands it that room loose
+  /// ([_inner]), and a child narrower than the room -- a picture of a stated
+  /// width, `width: 127px; max-width: 100%` (CSS 2.1 10.4) -- stays its own
+  /// width in it. Asked at the whole room, a `SizedBox(width: 127)` round an
+  /// `AspectRatio` hands the room on past its own width
+  /// (`RenderConstrainedBox` passes the width it is asked at through), and
+  /// the ratio answered the room's height: three logos in groups 192 and
+  /// 103 wide under an `IntrinsicHeight` came out 36px taller than they are,
+  /// and the page under them stood 36px low. A child that fills the room it
+  /// is handed -- an `AspectRatio` of no width, whatever its picture's own
+  /// width -- is the room wide and is asked there, as before; and where the
+  /// child answers no width or none it can say (a picture not yet sized),
+  /// the room is asked as before.
+  double _heightAskedAt(double width) {
+    final inner = _inner(BoxConstraints(maxWidth: width));
+    final room = inner.constrainWidth(width);
+    final child = this.child;
+    if (child == null || !room.isFinite) return room;
+    final laid = _dryLayout(child, inner).width;
+    return laid.isFinite && laid > 0 && laid < room ? laid : room;
+  }
 
   @override
-  double computeMaxIntrinsicHeight(double width) => guardedSize(
-    child,
-    () => child?.getMaxIntrinsicHeight(_inner(BoxConstraints(maxWidth: width)).constrainWidth(width)) ?? 0.0,
-  );
+  double computeMinIntrinsicHeight(double width) =>
+      guardedSize(child, () => child?.getMinIntrinsicHeight(_heightAskedAt(width)) ?? 0.0);
+
+  @override
+  double computeMaxIntrinsicHeight(double width) =>
+      guardedSize(child, () => child?.getMaxIntrinsicHeight(_heightAskedAt(width)) ?? 0.0);
 
   @override
   Size computeDryLayout(covariant BoxConstraints constraints) {

@@ -3,7 +3,7 @@ description: >-
   Layout widgets for the CSS rules Flutter's box protocol cannot state: whole
   words that overflow, shrink-to-fit, flex lines, grid tracks, floats, inline
   boxes.
-version: 0.1.0
+version: 0.1.1
 repository: https://github.com/wenkaifan0720/css_box
 issue_tracker: https://github.com/wenkaifan0720/css_box/issues
 

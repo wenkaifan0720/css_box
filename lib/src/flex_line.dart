@@ -751,6 +751,10 @@ class RenderFlexLine extends RenderBox
   double _gap = 0, _runGap = 0;
 
   bool _wrap;
+
+  /// Whether the line is working out its own width, its items' shares of
+  /// it counted as their content ([_layOut]).
+  bool _settling = false;
   bool get wrap => _wrap;
   set wrap(bool value) {
     if (_wrap == value) return;
@@ -891,6 +895,37 @@ class RenderFlexLine extends RenderBox
 
     final tightMain = _row ? constraints.hasTightWidth : constraints.hasTightHeight;
     final tightCross = _row ? constraints.hasTightHeight : constraints.hasTightWidth;
+    // A SHARE OF A COLUMN'S WIDTH IS OF THE WIDTH THE COLUMN COMES TO.
+    // A column handed no width of its own -- an item of a centring column,
+    // a float -- is as wide as its content (fit-content, css-sizing-3
+    // 5.2.2), and an item's percentage width is cyclic while that width is
+    // worked out: it counts as `auto`, the item contributing its own
+    // content, and once the width is settled the percentage is of it
+    // (css-sizing-3 5.2.1). So the column is laid out twice: first with
+    // its shares as content, for its width ([_settling]), then at that
+    // width, which every share is of. A share of no length was nothing at
+    // all, and the item stood at its content's width: a `width: 90%`
+    // column of words under a `max-width: 90%` item of a centring column
+    // wrapped its words at the whole 351 where Chrome's are 315.89, a
+    // line short each time. Down a column only: a share of a height that
+    // was not given is `auto` for good (CSS 2.1 10.5).
+    if (!_row &&
+        !tightCross &&
+        !_wrap &&
+        !_settling &&
+        crossRoom == _Room.definite &&
+        mainRoom == _Room.definite &&
+        constraints.maxWidth.isFinite &&
+        items.any((i) => i.data.crossSizeFraction != null)) {
+      _settling = true;
+      final double width;
+      try {
+        width = _layOut(constraints, place: false).size.width;
+      } finally {
+        _settling = false;
+      }
+      return _layOut(constraints.tighten(width: width), place: place);
+    }
     // A SHARE OF A LENGTH THE BOX WAS HANDED, and nothing of one it was
     // not ([FlexLine.spacingFraction]).
     _gap =
@@ -1547,6 +1582,21 @@ class RenderFlexLine extends RenderBox
     item.crossMax = _resolve(data.crossMax, data.crossMaxFraction, shareCross);
     item.statedMain = along(data.mainSize, data.mainSizeFraction);
     item.statedCross = _resolve(data.crossSize, data.crossSizeFraction, shareCross);
+    // While a column's own width is worked out a share of it is `auto`
+    // ([_settling]): the item is as wide as its content, fit-content in
+    // the room -- not as wide as whatever lays itself out across all of
+    // it, which a column of words that stretches them does.
+    if (_settling && item.statedCross == null && data.crossSizeFraction != null) {
+      final child = item.child;
+      final room = roomCross == null ? double.infinity : math.max(roomCross - _crossSum(item.margin), 0.0);
+      item.statedCross = guardedSize(
+        child,
+        () => math.max(
+          child.getMinIntrinsicWidth(double.infinity),
+          math.min(child.getMaxIntrinsicWidth(double.infinity), room),
+        ),
+      );
+    }
     // A FLOOR OR A CAP ACROSS THE LINE IS ONE ALONG IT TOO, through the
     // ratio (css-sizing-4 5.1): an empty `aspect-ratio: 2` item with
     // `min-height: 30px` is 60 wide, and the floor is where that 60 comes

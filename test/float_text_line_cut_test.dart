@@ -7,9 +7,12 @@
 // word longer than any cut, Japanese with its punctuation, widgets on the
 // lines, Hebrew -- at widths from a few words to many, alone and beside a
 // float, set at the start and justified: every line, where it is drawn,
-// how wide, and every widget on it, is the same either way. A paragraph
-// with a letter or word spacing in it is set from all the rest: there a
-// cut did move lines.
+// how wide, and every widget on it, is the same either way. Right to left
+// too, and Arabic, read off a cut where a letter past the line settles
+// the levels. A paragraph with a letter or word spacing in it, or an
+// isolate, is read off one paragraph of all the rest, its breaks read
+// again for the lines after it: there a cut did move lines, and the
+// paragraph's lines are the lines set from all the rest.
 import 'dart:io';
 
 import 'package:css_box/css_box.dart';
@@ -70,13 +73,46 @@ Map<String, InlineSpan> _paragraphs() {
       ).join(),
     ),
     'hebrew': TextSpan(text: List.filled(80, 'שלום עולם זה משפט ארוך 123 and some words').join(' ')),
+    'arabic': TextSpan(text: List.filled(80, 'مرحبا بالعالم هذه جملة طويلة (456) and "some" words.').join(' ')),
+    'spaced spans': TextSpan(
+      children: [
+        for (var i = 0; i < 40; i++)
+          TextSpan(
+            text: '${_words(14, i + 3).join(' ')} ',
+            style: switch (i % 4) {
+              1 => const TextStyle(letterSpacing: 1.5),
+              2 => const TextStyle(wordSpacing: 4, fontSize: 13),
+              _ => null,
+            },
+          ),
+      ],
+    ),
+    'an isolate': TextSpan(
+      text: List.filled(60, '${_words(9, 4).join(' ')} \u2067${_words(3, 5).join(' ')}\u2069').join(' '),
+    ),
   };
 }
 
+/// The paragraphs of the sweep set right to left.
+Map<String, InlineSpan> _rightToLeft() => {
+  'words, right to left': TextSpan(text: _words(700, 6).join(' ')),
+  'hebrew, right to left': TextSpan(text: List.filled(80, 'שלום עולם זה משפט ארוך 123 and some words').join(' ')),
+  'arabic, right to left': TextSpan(
+    text: List.filled(80, 'مرحبا بالعالم: هذه جملة طويلة 789 and some words!').join(' '),
+  ),
+};
+
 /// One FloatText of [text] in [width], beside a float where [floated],
 /// laid out from nothing.
-Widget _page(InlineSpan text, double width, {required bool floated, required TextAlign align, Key? key}) {
-  final para = FloatText(text, style: _style, lineHeight: 14, textAlign: align);
+Widget _page(
+  InlineSpan text,
+  double width, {
+  required bool floated,
+  required TextAlign align,
+  Key? key,
+  TextDirection direction = TextDirection.ltr,
+}) {
+  final para = FloatText(text, style: _style, lineHeight: 14, textAlign: align, textDirection: direction);
   return Directionality(
     textDirection: TextDirection.ltr,
     child: Align(
@@ -115,17 +151,24 @@ Future<List<Object>> _laid(WidgetTester t, Widget page) async {
 void main() {
   tearDown(() => RenderFloatText.debugWholeRest = false);
 
-  final paragraphs = _paragraphs();
-  for (final MapEntry(key: name, value: text) in paragraphs.entries) {
+  final paragraphs = _paragraphs(), rightToLeft = _rightToLeft();
+  for (final MapEntry(key: name, value: text) in {...paragraphs, ...rightToLeft}.entries) {
+    final direction = rightToLeft.containsKey(name) ? TextDirection.rtl : TextDirection.ltr;
     testWidgets('$name: the lines read off a cut are the lines read off all the rest', (t) async {
       var cases = 0;
       for (final width in const [44.0, 97.0, 163.0, 290.0, 610.0]) {
         for (final floated in const [false, true]) {
           for (final align in const [TextAlign.start, TextAlign.justify]) {
             RenderFloatText.debugWholeRest = false;
-            final cut = await _laid(t, _page(text, width, floated: floated, align: align, key: UniqueKey()));
+            final cut = await _laid(
+              t,
+              _page(text, width, floated: floated, align: align, key: UniqueKey(), direction: direction),
+            );
             RenderFloatText.debugWholeRest = true;
-            final whole = await _laid(t, _page(text, width, floated: floated, align: align, key: UniqueKey()));
+            final whole = await _laid(
+              t,
+              _page(text, width, floated: floated, align: align, key: UniqueKey(), direction: direction),
+            );
             expect(cut, whole, reason: '$name at $width, floated: $floated, $align');
             expect((cut[0] as List).length, greaterThan(1), reason: '$name at $width');
             cases++;
@@ -136,12 +179,13 @@ void main() {
     });
   }
 
-  testWidgets('NEGATIVE: words with a letter or word spacing in them are set from all the rest, '
+  testWidgets('words with a letter or word spacing in them are read off one paragraph of all the rest, '
       'and come out the same', (t) async {
     // Skia spaces such a paragraph in one pass, and a line can move with
     // words far past it: set from a cut, 46 of these 72 came out otherwise
     // in Inter. Without the spacing the same paragraphs set from a cut
-    // came out the same, all 72.
+    // came out the same, all 72. Read off one paragraph of all the rest,
+    // its breaks read again line after line, all 72 come out the same.
     final inter = File('test/fonts/Inter.ttf').readAsBytesSync();
     await (FontLoader('Inter')..addFont(Future.value(ByteData.view(Uint8List.fromList(inter).buffer)))).load();
     InlineSpan text(int variant) => TextSpan(

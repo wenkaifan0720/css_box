@@ -1,3 +1,41 @@
+## 0.1.1
+
+- A vertical `FlexLine` handed no width of its own (fit-content) reads its
+  items' `FlexCell.crossSizeFraction` against the width it comes to, where
+  it read them as no size at all. The share counts as the item's content
+  while the width is worked out (css-sizing-3 5.2.1), then the line is laid
+  out again at that width: a `width: 90%` item of a 351-wide column is
+  315.9 wide, and a column narrower than the room is its widest item's
+  width, the share 90% of that. A line given its width is unchanged.
+- `RatioBox` at an indefinite width is as wide as its content's max-content
+  width, and as tall as that width gives through the ratio (css-sizing-3
+  5.1), where it answered 0 tall. A `Column` measuring how wide the box
+  wants to be asks it how tall it is with no width, then how wide at that
+  height, so a picture at `width: 100%` with an `aspect-ratio` in a
+  shrink-to-fit parent (`ShrinkWidth`, `IntrinsicWidth`) came out 0x0.
+  Asked how wide at the height it comes to by itself, which states no height
+  (css-sizing-4 5.2), it now answers its content's widths, not the ratio's:
+  a percentage-width picture keeps no min-content (css-sizing-3 5.2.2), and
+  its parent shrinks to the room instead of overflowing it. A height the
+  box is given is still read through the ratio.
+- `FractionalConstraints` asks its child how tall it is at the width the
+  child is laid out at in the room, where it asked at the whole room. A
+  picture of a stated width under `max-width: 100%` in a wider room stays
+  its own width (CSS 2.1 10.4), but a `SizedBox` hands the width it is asked
+  at on to the `AspectRatio` inside, so the picture answered the room's
+  height: under an `IntrinsicHeight` it stood taller than it is. A child
+  that fills its room (an `AspectRatio` of no width) is still asked at the
+  room, and so is one that answers no width.
+- `FloatText` sets a long paragraph in work that grows with its length when
+  it is right to left, holds right-to-left letters or bidi controls, or has a
+  letter or word spacing. Each of its lines was set from all the rest of the
+  paragraph, so 4 times the words took 16 times the work. A paragraph set
+  right to left, or holding right-to-left letters, is now read off a cut a
+  little past the line, where a letter after the line settles the bidi levels
+  (UAX #9). A spaced paragraph, or one with an embedding or an isolate, is
+  laid out once at the line's width, and the lines after it are read off
+  that layout until the width changes. Its lines break where they did.
+
 ## 0.1.0
 
 First published version.

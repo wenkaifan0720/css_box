@@ -2596,6 +2596,7 @@ class RenderFloatText extends RenderBox
     _words = root is TextSpan ? strip(root, _style) : const TextSpan(text: '');
     _plain = _words.toPlainText(includeSemanticsLabels: false);
     _bidi = _plain.codeUnits.any(_bidiUnit);
+    _embedded = _plain.codeUnits.any(_embeddingUnit);
     _spaced = spaced;
     _spoken = root is TextSpan
         ? root.toPlainText(includePlaceholders: false).replaceAll('\u200B', '').replaceAll('\uFFFC', '')
@@ -2617,8 +2618,17 @@ class RenderFloatText extends RenderBox
 
   /// Whether the words hold a right-to-left letter or a bidi control:
   /// their levels are resolved over the whole paragraph (UAX #9), and a
-  /// line is set from all the rest of it ([_lineEnd]).
+  /// line is read off a cut only where a letter past it settles them
+  /// ([_lineEnd], [_leveled]).
   bool _bidi = false;
+
+  /// Whether the words hold an embedding, an override or an isolate
+  /// (UAX #9 X1-X8): what one opens is closed, or its direction found,
+  /// anywhere after it, and a line is set from all the rest
+  /// ([_lineEnd]).
+  bool _embedded = false;
+
+  static bool _embeddingUnit(int u) => (u >= 0x202A && u <= 0x202E) || (u >= 0x2066 && u <= 0x2069);
 
   /// Whether a letter spacing or a word spacing other than 0 is on any of
   /// the words or the widgets among them: Skia spaces the paragraph in one
@@ -2984,10 +2994,13 @@ class RenderFloatText extends RenderBox
   }
 
   /// WHERE SKIA ENDS THE FIRST LINE of the words from [from] in [maxWidth]
-  /// (its trailing spaces in it), read off the words up to a cut not far
-  /// past the line, not all the rest of the paragraph: set from all of it,
-  /// each line shaped what was left, and a long paragraph in a narrow
-  /// column grew as the square of its length.
+  /// (its trailing spaces in it), as all the rest of the paragraph sets
+  /// it: read off the words up to a cut not far past the line where that
+  /// is the same ([_lineEnd]'s window), else off one paragraph of all the
+  /// rest, its breaks read again for each line after it as wide
+  /// ([_restLineEnd]). Set from all the rest for every line, each line
+  /// shaped what was left, and a long paragraph in a narrow column grew as
+  /// the square of its length.
   ///
   /// THE WORDS AFTER THE CUT CANNOT MOVE A BREAK BEFORE IT. The cut is a
   /// break either way ([_cutAfter]): after a run of spaces, or between two
@@ -2997,28 +3010,110 @@ class RenderFloatText extends RenderBox
   /// shapes and breaks them -- and what comes after only makes that word
   /// longer, if anything (a break UAX #14 keeps across spaces), so it
   /// still does not fit. Else the cut is taken twice as far, and at the
-  /// last the line is set from all the rest, as it always was. NEGATIVE:
-  /// words with a right-to-left letter or a bidi control in them, and a
-  /// paragraph set right to left, are leveled over the whole paragraph
-  /// (UAX #9), and each line is still set from all the rest of it.
+  /// last the line is read off all the rest.
+  ///
+  /// WORDS SET RIGHT TO LEFT, OR WITH A RIGHT-TO-LEFT LETTER IN THEM, ARE
+  /// LEVELED OVER ALL THE REST (UAX #9), and the cut is read off only where
+  /// the levels up to the word that did not fit are theirs in all of it
+  /// ([_leveled]): a letter after that word and before the cut. The rules
+  /// that look forward -- a run of neutrals (N1, N2) and of terminators
+  /// next to a number (W5), a separator between two numbers (W4) -- stop
+  /// at a letter, and the ones that look back (W2, W7) read the same
+  /// words; the paragraph's level is the painter's own. NEGATIVE: words
+  /// with an embedding, an override or an isolate in them ([_embedded])
+  /// are read off all the rest at every line: what one opens is closed
+  /// (X6a), or its direction found (FSI, X5c), anywhere after it.
   ///
   /// NEGATIVE: NOR ARE WORDS WITH A LETTER OR WORD SPACING ANYWHERE IN
-  /// THEM. Skia spaces such a paragraph in one pass over all of it, and a
-  /// break can move with what comes long after: in a paragraph that mixes
-  /// a `wordSpacing: 4` span with other styles, a line of 33 letters stood
-  /// 31 once a letter was added 300 letters past it, inside the spaced
-  /// span. Such a paragraph is set from all the rest at every line.
+  /// THEM read off a cut. Skia spaces such a paragraph in one pass over
+  /// all of it, and a break can move with what comes long after: in a
+  /// paragraph that mixes a `wordSpacing: 4` span with other styles, a
+  /// line of 33 letters stood 31 once a letter was added 300 letters past
+  /// it, inside the spaced span; read off cuts, 46 of 72 such paragraphs
+  /// came out otherwise (`float_text_line_cut_test`). They are read off
+  /// all the rest, at every line.
   int _lineEnd(int from, double maxWidth) {
-    if (!_rtl && !_bidi && !_spaced && !debugWholeRest) {
+    if (debugWholeRest) return _lineEndIn(from, _plain.length, maxWidth);
+    if (!_embedded && !_spaced) {
+      final leveled = _rtl || _bidi;
       for (var span = 256; from + span < _plain.length; span *= 2) {
         final to = _cutAfter(from + span, from + 2 * span);
         if (to == null) break;
         final end = _lineEndIn(from, to, maxWidth);
-        if (_settled(end, to)) return end;
+        if (_settled(end, to) && (!leveled || _leveled(end, to))) return end;
       }
     }
-    return _lineEndIn(from, _plain.length, maxWidth);
+    return _restLineEnd(from, maxWidth);
   }
+
+  /// Whether the levels of the words up to the end of the one after code
+  /// unit [end] are the same set from a cut at [to] as from all the rest:
+  /// a letter stands after that word and before the cut ([_lineEnd]).
+  bool _leveled(int end, int to) {
+    final word = _chunkEnd(end);
+    for (var i = to; i > word;) {
+      final c = _runeBefore(i, word);
+      if (_strong(c) != null) return true;
+      i -= c > 0xFFFF ? 2 : 1;
+    }
+    return false;
+  }
+
+  /// THE FIRST LINE OF ALL THE REST FROM [from] IN [maxWidth], READ OFF ONE
+  /// PARAGRAPH OF IT: all the rest is laid out once at that width, and the
+  /// line that starts at [from] in it -- and each line after it -- ends
+  /// where it does in that paragraph. Skia breaks a paragraph a line at a
+  /// time from where the line before it ended (greedy), shaping and
+  /// spacing all of it in one pass, so the paragraph's line from a start
+  /// breaks where the one-line painter of all the rest from that start
+  /// ends: over the sweep of spaced paragraphs that a cut moved, all 72
+  /// came out the same, and so did every sweep of
+  /// `float_text_line_cut_test`. A line of another width -- beside a
+  /// float, below one -- or one that starts where no line of the
+  /// paragraph does lays all the rest out again, from it: the work is all
+  /// the rest once for each width the lines change to, not once a line.
+  int _restLineEnd(int from, double maxWidth) {
+    if (_rest case (final width, final ends) when width == maxWidth) {
+      if (ends[from] case final end?) return end;
+    }
+    final tp = _painter(from, _plain.length)..layout(maxWidth: maxWidth);
+    final ends = <int, int>{};
+    final length = _plain.length - from;
+    // Each line of the paragraph, by where the lines are set from after
+    // the one before it ends ([_nextAfter]).
+    var key = from;
+    for (var at = 0; at < length;) {
+      final end = tp.getLineBoundary(TextPosition(offset: at)).end;
+      if (end <= at) {
+        // A forced break between two lines is on neither.
+        at++;
+        continue;
+      }
+      ends[key] = from + end;
+      key = _nextAfter(from + end);
+      at = end;
+    }
+    tp.dispose();
+    _rest = (maxWidth, ends);
+    return ends[from] ?? _lineEndIn(from, _plain.length, maxWidth);
+  }
+
+  /// Where the lines are set from after a line that Skia ends at [brk]:
+  /// past its trailing spaces and its forced break, as [_lineFrom] finds.
+  int _nextAfter(int brk) {
+    var end = brk;
+    while (end > 0 && (_space(_unit(end - 1)) || _forced(_unit(end - 1)))) {
+      end--;
+    }
+    var next = _skipSpaces(end);
+    if (next < _plain.length && _forced(_unit(next))) next++;
+    return next;
+  }
+
+  /// The line ends [_restLineEnd] last read off all the rest, by where
+  /// each line starts, and the width they were set in; set aside each
+  /// time the lines are laid ([_layLines]).
+  (double, Map<int, int>)? _rest;
 
   /// Sets every line from all the rest of the paragraph, as before
   /// [_lineEnd] read it off a cut: what a test compares the two with.
@@ -3054,12 +3149,18 @@ class RenderFloatText extends RenderBox
     return null;
   }
 
-  /// A character that starts a cluster and a word after a space.
+  /// A character that starts a cluster and a word after a space: a
+  /// Hebrew or an Arabic letter too, which joins nothing across the space
+  /// (no mark, no tatweel).
   static bool _starts(int c) =>
       (c > 0x20 && c < 0x7F) ||
       (c >= 0xC0 && c <= 0x24F && c != 0xD7 && c != 0xF7) ||
       (c >= 0x391 && c <= 0x3C9) ||
       (c >= 0x400 && c <= 0x481) ||
+      (c >= 0x5D0 && c <= 0x5EA) ||
+      (c >= 0x621 && c <= 0x63A) ||
+      (c >= 0x641 && c <= 0x64A) ||
+      (c >= 0x671 && c <= 0x6D3) ||
       _ideograph(c) ||
       (c >= 0xAC00 && c <= 0xD7A3);
 
@@ -3251,6 +3352,7 @@ class RenderFloatText extends RenderBox
   /// are [onLine], in order, laid out by [pass]; their shares are of [w].
   _Laid _layLines(_Pass? pass, _Ctx? host, double? maxW, double? w, EdgeInsets pad, List<_Node> onLine) {
     final held = _dims = _heldIn(w);
+    _rest = null;
     final lines = <_Line>[];
     final placed = <_OnLine>[];
     ({double x, double width, double y, int? segment}) band(double at, int? after) {

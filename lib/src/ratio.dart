@@ -119,19 +119,45 @@ class RenderRatioBox extends RenderProxyBox with AsksGuarded, KeptUnderHatch {
 
   // Asked at a height, the ratio answers from it, as `AspectRatio` does: a
   // row that stretches an empty `aspect-ratio: 2` item to 100 hears 200.
+  //
+  // BUT THE HEIGHT IT COMES TO BY ITSELF STATES NONE. A column measuring
+  // how wide its child wants to be asks it at the height it has with no
+  // width given (Flutter's `RenderFlex`), which is no height the page
+  // states: its `auto` height (CSS 2.1 10.5), and a ratio transfers a
+  // definite size only (css-sizing-4 5.2). Read from it, a picture's
+  // narrowest was its widest: a devices picture at `width: 100%`
+  // has no min-content (css-sizing-3 5.2.2) and its card shrinks to the
+  // room, where the 400px it came to hung out of a 343px card. So asked
+  // at that height, the box answers as asked at none. NEGATIVE: any other
+  // height is the ratio's, as before.
+  bool _statesHeight(double height) =>
+      height.isFinite && (height - getMaxIntrinsicHeight(double.infinity)).abs() > _sameHeight;
+
   @override
   double computeMinIntrinsicWidth(double height) =>
-      height.isFinite ? height * _aspectRatio : child?.getMinIntrinsicWidth(height) ?? 0.0;
+      _statesHeight(height) ? height * _aspectRatio : child?.getMinIntrinsicWidth(double.infinity) ?? 0.0;
 
   @override
   double computeMaxIntrinsicWidth(double height) =>
-      height.isFinite ? height * _aspectRatio : child?.getMaxIntrinsicWidth(height) ?? 0.0;
+      _statesHeight(height) ? height * _aspectRatio : child?.getMaxIntrinsicWidth(double.infinity) ?? 0.0;
 
   @override
   double computeMinIntrinsicHeight(double width) => computeMaxIntrinsicHeight(width);
 
+  // AT AN INDEFINITE WIDTH THE BOX IS AS WIDE AS ITS CONTENT WANTS, and as
+  // tall as that width gives through the ratio: an `auto` width with no
+  // room to fill is the max-content width (css-sizing-3 5.1). A column
+  // measuring how wide its child wants to be asks it how tall it is with
+  // no width given, then how wide at that height (Flutter's `RenderFlex`);
+  // answered 0 and then 0 wide at 0, a picture at `width: 100%;
+  // aspect-ratio: auto 2240 / 1492` in a shrink-to-fit card came out 0x0 --
+  // a phone pricing page lost its devices picture and 153px of its length.
   @override
-  double computeMaxIntrinsicHeight(double width) => width.isFinite ? _height(width) : 0.0;
+  double computeMaxIntrinsicHeight(double width) {
+    if (width.isFinite) return _height(width);
+    final wanted = _width(const BoxConstraints());
+    return wanted.isFinite ? _height(wanted) : 0.0;
+  }
 
   @override
   Size computeDryLayout(covariant BoxConstraints constraints) {
@@ -153,3 +179,7 @@ class RenderRatioBox extends RenderProxyBox with AsksGuarded, KeptUnderHatch {
     child?.layout(BoxConstraints.tight(size));
   }
 }
+
+/// How far apart two heights may be and still be one: a height worked out
+/// twice along two paths of the same layout.
+const _sameHeight = 0.01;
