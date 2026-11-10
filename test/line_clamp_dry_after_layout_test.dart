@@ -162,6 +162,71 @@ void main() {
     expect(box.getDryLayout(const BoxConstraints(maxWidth: 100)).height, 47);
   });
 
+  testWidgets('kept from a layout at another text scale, a clamp answers the height it is laid out at', (t) async {
+    // The card's shape: the first paragraph built at one line. At 1.0 its
+    // text is one line and the clamp cuts at the next paragraph; at 2.0
+    // (20px glyphs, 40px lines) it breaks into two, which the clamp of two
+    // keeps. Asked before laying the clamp out again, the paragraph
+    // answered the budget it was told at 1.0 -- its own one line, 40 --
+    // and a grid sizing its row from that cut the card 40px short.
+    Widget at(double scale) => MediaQuery(
+      data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+      child: _at100(_AskFirst(child: _clamp(first: 'aaaa bbbb', own: 1))),
+    );
+    await t.pumpWidget(at(1));
+    final box = t.renderObject<RenderLineClamp>(find.byType(LineClamp));
+    expect(box.size.height, 40);
+    await t.pumpWidget(at(2));
+    final ask = t.renderObject<_RenderAskFirst>(find.byType(_AskFirst));
+    expect(box.size.height, 80);
+    expect(ask.dry, 80);
+    expect(ask.intrinsic, 80);
+  });
+
+  testWidgets('kept from a layout in another room, a clamp answers the height it is laid out at', (t) async {
+    // At 200 the first paragraph is one line and the clamp cuts at the
+    // next; at 100 it breaks into two, which the clamp keeps. Nothing
+    // under the clamp changed: only the room it is handed.
+    Widget at(double width) => Directionality(
+      textDirection: TextDirection.ltr,
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(width: width, child: _AskFirst(child: _clamp(own: 1))),
+      ),
+    );
+    await t.pumpWidget(at(200));
+    final box = t.renderObject<RenderLineClamp>(find.byType(LineClamp));
+    expect(box.size.height, 40);
+    await t.pumpWidget(at(100));
+    final ask = t.renderObject<_RenderAskFirst>(find.byType(_AskFirst));
+    expect(box.size.height, 40);
+    expect(ask.dry, 40);
+    expect(ask.intrinsic, 40);
+  });
+
+  testWidgets('NEGATIVE: marked again with nothing changed, a clamp answers as it did', (t) async {
+    // A reassembly marks every box; the clamp then asks ahead what it was
+    // told, and its height is the same.
+    await t.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+        child: _at100(_AskFirst(child: _clamp(first: 'aaaa bbbb', own: 1))),
+      ),
+    );
+    final box = t.renderObject<RenderLineClamp>(find.byType(LineClamp));
+    final ask = t.renderObject<_RenderAskFirst>(find.byType(_AskFirst));
+    expect(box.size.height, 80);
+    expect(ask.dry, 80);
+    for (final v in t.binding.renderViews) {
+      v.reassemble();
+    }
+    await t.pump();
+    expect(box.size.height, 80);
+    expect(ask.dry, 80);
+    expect(ask.intrinsic, 80);
+    expect(box.getDryLayout(const BoxConstraints(maxWidth: 100)).height, 80);
+  });
+
   testWidgets('NEGATIVE: a clamp that cuts nothing answers what it holds', (t) async {
     await t.pumpWidget(_at100(_AskFirst(child: _clamp(lines: 4))));
     final ask = t.renderObject<_RenderAskFirst>(find.byType(_AskFirst));

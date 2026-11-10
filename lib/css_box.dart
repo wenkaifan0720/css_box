@@ -41,6 +41,7 @@ export 'src/percent_corner.dart' show FractionalRadius, PaddingEdgeClip, Percent
 export 'src/linebox.dart' show GrownLine, LineBox;
 export 'src/mitered.dart' show MiteredBorder;
 export 'src/multi_column.dart' show MultiColumn;
+export 'src/offset_span.dart' show OffsetSpan, OffsetSpans;
 export 'src/flex_line.dart' show FlexCell, FlexKeyword, FlexLine;
 export 'src/float_flow.dart' show FloatClear, FloatFlow, FloatSide, FloatSlot, FloatText, FloatWidth;
 export 'src/floor.dart' show FloorBox;
@@ -85,6 +86,7 @@ export 'src/scroll.dart' show ScrollBox;
 export 'src/shadow.dart' show InnerShadow, OuterShadow;
 export 'src/shape_clip.dart' show CircleClip, ClipPoint, EllipseClip, PolygonClip, RingClip;
 export 'src/shrink.dart' show ShrinkWidth;
+export 'src/small_caps.dart' show SmallCapsSpan;
 export 'src/spill.dart' show Spill;
 export 'src/spot.dart' show SpotArea, SpotMark, SpotScope, SpotShift, SpotSpan, SpotText;
 export 'src/pins.dart' show SectionPin;

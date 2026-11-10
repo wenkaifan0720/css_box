@@ -1,3 +1,41 @@
+## 0.1.2
+
+- A `BlockEllipsis` under a `LineClamp` that has been laid out answers a
+  height asked before the clamp lays out again (intrinsic heights, dry
+  layout) as the clamp will cut it, once the room it is asked in is not the
+  one the clamp counted its lines in, or once anything under the clamp has
+  changed (a text, a text scale, a style). It answered the budget the
+  clamp's last layout told it: a title built at one line that a clamp of two
+  let break into two lines once the text scale went from 1.3 to 2.0 answered
+  its one line, and a grid of such cards sized its rows one line short and
+  overflowed them until the page was laid out anew. Laid out and asked in
+  the same room with nothing changed, a block answers as before.
+  `RenderLineClamp.markNeedsLayout` only clears a flag.
+- `LineBox` round a line of nothing but atomic inlines on a forced strut
+  (`StrutStyle.forceStrutHeight`) answers the strut's line height and
+  ascent when asked before layout (intrinsic heights, dry layout, dry
+  baseline), as it is laid out: Skia sets the line at the strut whatever
+  stands on it. It worked the line out of each box's own ascent and
+  descent, which are Skia's unrounded ones where Blink rounds them, and a
+  glyph at `vertical-align: -4px` on a 32px line answered 32.73 to an
+  `IntrinsicHeight` round it. A strut that is a minimum is unchanged.
+- New `OffsetSpan` and `OffsetSpans`: a run of text painted off its place
+  on the line by `dx` and `dy`, as a relatively positioned inline box is
+  (CSS 2.1 9.4.3, `position: relative` with `top`/`left`). The span lays
+  out as the `TextSpan` it is, so the line keeps the place and no line
+  grows; `OffsetSpans` round the paragraph paints it moved, each piece on
+  its own line, and `FloatText` paints the pieces on its lines moved
+  itself. A footnote mark at `top: -0.5em` on the baseline is drawn half
+  an em up with the words round it where they were.
+- New `SmallCapsSpan`: a `TextSpan` for `font-variant: small-caps` (and
+  `petite-caps`, `all-small-caps`, `all-petite-caps`) in a face with no
+  small capitals of its own. Each letter that changes when uppercased is
+  drawn as its capital at `size`, the rest at the text's size; under `all`
+  the whole run is small capitals (css-fonts-4 6.4, as a browser makes
+  them up). Its `text` stays the string written, and reads back so:
+  `SmallCapsSpan(text: 'oct 31, 2026', size: 11)` draws `OCT` at 11 and
+  ` 31, 2026` at the paragraph's size.
+
 ## 0.1.1
 
 - A vertical `FlexLine` handed no width of its own (fit-content) reads its

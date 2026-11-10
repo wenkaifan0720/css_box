@@ -28,6 +28,7 @@
 library;
 
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
@@ -36,6 +37,7 @@ import 'package:flutter/widgets.dart';
 import 'content.dart';
 import 'dry.dart';
 import 'han.dart';
+import 'offset_span.dart';
 
 /// Which side a [FloatSlot] is pushed to, out of the stack (`float`).
 enum FloatSide { none, left, right }
@@ -2279,7 +2281,9 @@ class FloatText extends MultiChildRenderObjectWidget {
 
   /// The paragraph's runs. A [WidgetSpan] among them is an atomic inline:
   /// a box of its own on the line, as tall and as wide as the widget is,
-  /// standing on the baseline as its [PlaceholderSpan.alignment] says.
+  /// standing on the baseline as its [PlaceholderSpan.alignment] says. An
+  /// [OffsetSpan] is painted off its place on each line it is on, as
+  /// `OffsetSpans` paints a paragraph's.
   final InlineSpan text;
 
   static final _widgets = Expando<List<Widget>>();
@@ -2522,6 +2526,14 @@ class RenderFloatText extends RenderBox
   late TextSpan _words;
   late String _plain;
 
+  /// Where each [OffsetSpan] with an offset stands in the words, and its
+  /// offset: each line paints its piece of one moved ([_paintLine]).
+  List<(int, int, Offset)> _moved = const [];
+
+  /// How many code units a painter's text has before the words it was cut
+  /// to start: the mark that sets their direction ([_painter]).
+  final _leads = Expando<int>();
+
   /// What a reader is told: the words as [_text] spells them, each span's
   /// [TextSpan.semanticsLabel] in that span's place, with no float's place
   /// (U+FFFC) nor break (U+200B) in them.
@@ -2553,9 +2565,11 @@ class RenderFloatText extends RenderBox
     final ends = _ends = Expando<List<int>>();
     var at = 0;
     var spaced = false;
+    final moved = <(int, int, Offset)>[];
     TextSpan strip(TextSpan s, TextStyle inherited) {
       final style = s.style == null ? inherited : inherited.merge(s.style);
       if (_spacing(style)) spaced = true;
+      final from = at;
       String? text;
       final own = s.text;
       if (own != null) {
@@ -2585,6 +2599,7 @@ class RenderFloatText extends RenderBox
           if (k is TextSpan) strip(k, style) else if (k is PlaceholderSpan) held(k),
       ];
       final out = TextSpan(text: text, style: s.style, children: kids.isEmpty ? null : kids);
+      if (s is OffsetSpan && s.offset != Offset.zero && at > from) moved.add((from, at, s.offset));
       if (kids.isNotEmpty) {
         var end = text?.length ?? 0;
         ends[out] = [for (final k in kids) end += k is TextSpan ? (ends[k]?.last ?? k.text?.length ?? 0) : 1];
@@ -2594,6 +2609,7 @@ class RenderFloatText extends RenderBox
 
     final root = _text;
     _words = root is TextSpan ? strip(root, _style) : const TextSpan(text: '');
+    _moved = moved;
     _plain = _words.toPlainText(includeSemanticsLabels: false);
     _bidi = _plain.codeUnits.any(_bidiUnit);
     _embedded = _plain.codeUnits.any(_embeddingUnit);
@@ -2768,6 +2784,7 @@ class RenderFloatText extends RenderBox
       maxLines: maxLines,
       textScaler: _textScaler,
     );
+    if (before != null) _leads[tp] = before.length;
     if (_holders.isNotEmpty) {
       // The widgets in the range, found by where the first is: the places
       // run in the words' order.
@@ -3768,6 +3785,28 @@ class RenderFloatText extends RenderBox
   @override
   bool hitTestSelf(Offset position) => true;
 
+  /// [l], set by [tp], painted at [at]: as it is, and each piece of an
+  /// [OffsetSpan] on it painted off its place, as `OffsetSpans` paints a
+  /// paragraph's (CSS 2.1 9.4.3) -- a line here is a paragraph of its own.
+  void _paintLine(Canvas canvas, _Line l, TextPainter tp, Offset at) {
+    final pieces = <(Offset, List<Rect>)>[];
+    final lead = _leads[tp] ?? 0;
+    for (final (from, to, by) in _moved) {
+      final a = math.max(from, l.start), b = math.min(to, l.end);
+      if (a >= b) continue;
+      final boxes = tp.getBoxesForSelection(
+        TextSelection(baseOffset: a - l.start + lead, extentOffset: b - l.start + lead),
+        boxHeightStyle: ui.BoxHeightStyle.max,
+      );
+      if (boxes.isNotEmpty) pieces.add((by, [for (final x in boxes) x.toRect()]));
+    }
+    if (pieces.isEmpty) {
+      tp.paint(canvas, at);
+      return;
+    }
+    paintMoved(canvas, at, (at & tp.size).inflate(tp.size.longestSide + 1e4), pieces, (by) => tp.paint(canvas, at + by));
+  }
+
   @override
   void paint(PaintingContext context, Offset offset) {
     final laid = _laid;
@@ -3776,7 +3815,7 @@ class RenderFloatText extends RenderBox
     for (final l in laid.lines) {
       if (l.end <= l.start) continue;
       final (tp, at) = _linePainter(l);
-      tp.paint(context.canvas, offset + at);
+      _paintLine(context.canvas, l, tp, offset + at);
       tp.dispose();
     }
     var child = firstChild;

@@ -54,6 +54,7 @@ export 'src/layers.dart' show RenderLayers;
 export 'src/linebox.dart' show RenderLineBox;
 export 'src/mask_layers.dart' show RenderMaskLayers;
 export 'src/multi_column.dart' show MultiColumnParentData, RenderMultiColumn;
+export 'src/offset_span.dart' show RenderOffsetSpans;
 export 'src/picture_tile.dart' show RenderPictureTile;
 export 'src/press_where_drawn.dart' show RenderPressWhereDrawn;
 export 'src/pretty.dart' show RenderPretty;

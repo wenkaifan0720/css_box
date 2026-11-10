@@ -187,9 +187,14 @@ class RenderBlockEllipsis extends RenderProxyBox with DryLastBaseline, AsksGuard
   /// How many lines the whole paragraph breaks into in the room this box
   /// was laid out in; null where there is no paragraph here to count.
   int? get lineCount {
-    if (_paragraph() == null || !hasSize) return null;
-    return _linesIn(constraints.maxWidth.isFinite ? constraints.maxWidth : size.width);
+    final room = _room;
+    if (_paragraph() == null || room == null) return null;
+    return _linesIn(room);
   }
+
+  /// The room this box was laid out in, which its lines are counted in
+  /// ([lineCount]); null before its first layout.
+  double? get _room => hasSize ? (constraints.maxWidth.isFinite ? constraints.maxWidth : size.width) : null;
 
   /// How many lines the whole paragraph breaks into in [room]: as wide as
   /// its widest word where that is wider, as the [LineBox] round it lays
@@ -209,26 +214,29 @@ class RenderBlockEllipsis extends RenderProxyBox with DryLastBaseline, AsksGuard
     }
   }
 
-  /// Whether a [LineClamp] round the block has counted its lines and told
-  /// it its [budget]. Until one has, the block is asked its height as the
-  /// clamp WILL cut it ([_heightAhead]).
-  bool _told = false;
+  /// The room a [LineClamp] round the block counted its lines in when it
+  /// told it its [budget]; null until one has. The budget holds in that
+  /// room only, and only while the clamp has not been marked to lay out
+  /// again ([RenderLineClamp._counted]): until then, and in any other
+  /// room, the block is asked its height as the clamp WILL cut it
+  /// ([_heightAhead]).
+  double? _toldFor;
 
-  /// The lines the [LineClamp] round this block will leave it in [room],
-  /// worked out before the clamp has counted them: what the clamp's own
-  /// walk hands it ([RenderLineClamp._budgetFor]). Null where no clamp is
-  /// round it, or the clamp leaves the paragraph whole.
-  int? _budgetAhead(double room) {
+  /// The [LineClamp] round this block, if there is one.
+  RenderLineClamp? get _clamp {
     for (var a = parent; a != null; a = a.parent) {
-      if (a is RenderLineClamp) return a._budgetFor(this, room);
+      if (a is RenderLineClamp) return a;
     }
     return null;
   }
 
   /// How tall the block is at [width] AS THE CLAMP ROUND IT WILL CUT IT,
-  /// asked before the clamp has counted its lines ([_told]); null where the
-  /// clamp has, where there is no clamp round it, or where the clamp
-  /// leaves the paragraph whole, and the block answers as it always has.
+  /// asked where the budget the clamp told it does not hold ([_toldFor]):
+  /// before the clamp has counted its lines, in another room than it
+  /// counted them in, or once something under the clamp has changed. Null
+  /// where the budget holds, where there is no clamp round it, or where
+  /// the clamp leaves the paragraph whole, and the block answers as it
+  /// always has.
   ///
   /// A CLAMPED BLOCK IS ITS KEPT LINES BEFORE ITS FIRST LAYOUT TOO. The
   /// clamp counts the lines and hands each paragraph its budget in its own
@@ -243,10 +251,23 @@ class RenderBlockEllipsis extends RenderProxyBox with DryLastBaseline, AsksGuard
   /// in: its kept lines where the clamp cuts it, one unbroken line past
   /// the cut. What follows the box holding the cut is still asked its own
   /// height; the clamp's layout ends at that box.
+  ///
+  /// AND AFTER A CHANGE, BEFORE THE CLAMP COUNTS AGAIN. A budget is told
+  /// for the room and the text the clamp counted, and kept, it answered
+  /// for another: a card's title built at one line, whole on one line at
+  /// text scale 1.3 and so left its own clamp, broke into two at 2.0, which
+  /// the card's two-line clamp keeps -- and asked before the clamp laid out
+  /// again, it answered its one line, the grid round the cards sized its
+  /// row 32px short of them, and each card overflowed it. Laid out anew at
+  /// 2.0 the row was right. So a told budget holds in the room it was told
+  /// for, until the clamp is marked to lay out again; a width the window
+  /// changes, a text scale or a text, is asked ahead as a first layout is.
   double? _heightAhead(double width) {
-    if (_told || !width.isFinite) return null;
+    if (!width.isFinite) return null;
+    final clamp = _clamp;
+    if (clamp == null || (_toldFor == width && clamp._counted)) return null;
     if (_paragraph() == null) return null;
-    final b = _budgetAhead(width);
+    final b = clamp._budgetFor(this, width);
     return b == null ? null : _heightAt(width, b);
   }
 
@@ -795,8 +816,37 @@ class RenderLineClamp extends RenderProxyBox with ChildDryBaseline, KeptUnderHat
     markNeedsLayout();
   }
 
+  /// Whether the budgets this clamp's last layout told the blocks under it
+  /// still hold ([RenderBlockEllipsis._toldFor]): it has laid out, and has
+  /// not been marked to lay out again since. A change under it -- a text,
+  /// a text scale, a style -- marks it on the way up, and so does a
+  /// reassembly.
+  bool _counted = false;
+
+  /// Whether the clamp is laying itself out: telling the blocks under it
+  /// their budgets marks them, and the marks reach it.
+  bool _laying = false;
+
+  // A FIELD CLEARED, AND NOTHING MORE: this runs for every change under the
+  // clamp, and a block reads the field only where it is asked its height.
+  @override
+  void markNeedsLayout() {
+    if (!_laying) _counted = false;
+    super.markNeedsLayout();
+  }
+
   @override
   void performLayout() {
+    _laying = true;
+    try {
+      _layOut();
+      _counted = true;
+    } finally {
+      _laying = false;
+    }
+  }
+
+  void _layOut() {
     final c = child;
     if (c == null) {
       size = constraints.smallest;
@@ -855,7 +905,7 @@ class RenderLineClamp extends RenderProxyBox with ChildDryBaseline, KeptUnderHat
         if (r is RenderClampedBlock) boxes[r] = above.contains(r);
       }
       for (final e in budgets.entries) {
-        e.key._told = true;
+        e.key._toldFor = e.key._room;
         if (e.key.budget != e.value) {
           e.key.budget = e.value;
           changed = true;

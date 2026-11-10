@@ -1321,6 +1321,16 @@ class RenderLineBox extends RenderProxyBox with DryLastBaseline, PassesBaseline,
   /// at the bottom of a strut that reaches nothing below its baseline, and
   /// asked dry the line answered Skia's 147 to the box round it.
   ///
+  /// A FORCED STRUT IS THE LINE, whatever stands on it: Skia sets a line
+  /// on a strut with `forceStrutHeight` at the strut's ascent and descent
+  /// and lets a box that reaches past them hang out, so the line is laid
+  /// out [lineHeight] tall on [ascent]. Asked before layout it is the same
+  /// line. A box's own halves are Skia's, unrounded, where Blink rounds a
+  /// font's ascent and descent and floors the half-leading: an icon glyph
+  /// at `vertical-align: -4px` on a 32px line reached 0.73px over the
+  /// strut's ascent, and every row of a feature table measured by an
+  /// `IntrinsicHeight` stood that much taller than its 32px line.
+  ///
   /// Null where the line has text on it, does not fit on one line, or
   /// centres a box on it.
   (double, double?)? _boxesOnly(double width) {
@@ -1359,6 +1369,7 @@ class RenderLineBox extends RenderProxyBox with DryLastBaseline, PassesBaseline,
       box = child.childAfter(box);
     }
     if (box != null || across > width + 0.01) return null;
+    if (child.strutStyle?.forceStrutHeight ?? false) return (lh, a);
     return edged > up + down ? (edged, null) : (up + down, up);
   }
 
