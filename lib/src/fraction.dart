@@ -302,10 +302,12 @@ class RenderFractionalWidth extends RenderAligningShiftedBox
   // track over a `width: 70%` item is as wide as the item's text, and the
   // item is then 70% of that and breaks its line.
   @override
-  double computeMinIntrinsicWidth(double height) => _clamp(child?.getMinIntrinsicWidth(height) ?? 0.0);
+  double computeMinIntrinsicWidth(double height) =>
+      _clamp(guardedSize(child, () => child?.getMinIntrinsicWidth(height) ?? 0.0));
 
   @override
-  double computeMaxIntrinsicWidth(double height) => _clamp(child?.getMaxIntrinsicWidth(height) ?? 0.0);
+  double computeMaxIntrinsicWidth(double height) =>
+      _clamp(guardedSize(child, () => child?.getMaxIntrinsicWidth(height) ?? 0.0));
 
   @override
   double computeMinIntrinsicHeight(double width) =>
@@ -537,7 +539,8 @@ class RenderFractionalConstraints extends RenderProxyBox with AsksGuarded, KeptU
   }
 
   @override
-  double computeMinIntrinsicWidth(double height) => _compressible ? 0.0 : super.computeMinIntrinsicWidth(height);
+  double computeMinIntrinsicWidth(double height) =>
+      _compressible ? 0.0 : guardedSize(child, () => super.computeMinIntrinsicWidth(height));
 
   BoxConstraints _inner(BoxConstraints c) {
     if (!c.hasBoundedWidth) return c;
@@ -909,10 +912,12 @@ class RenderFractionalHeight extends RenderProxyBox with AsksGuarded, KeptUnderH
   // A box sized by its CONTENT treats a percentage height as `auto` while
   // it asks (css-sizing-3 5.2.1), so both answers are the child's own.
   @override
-  double computeMinIntrinsicHeight(double width) => _held(child?.getMinIntrinsicHeight(width) ?? 0.0);
+  double computeMinIntrinsicHeight(double width) =>
+      _held(guardedSize(child, () => child?.getMinIntrinsicHeight(width) ?? 0.0));
 
   @override
-  double computeMaxIntrinsicHeight(double width) => _held(child?.getMaxIntrinsicHeight(width) ?? 0.0);
+  double computeMaxIntrinsicHeight(double width) =>
+      _held(guardedSize(child, () => child?.getMaxIntrinsicHeight(width) ?? 0.0));
 
   @override
   @protected
@@ -1022,10 +1027,12 @@ class RenderFractionalMinHeight extends RenderProxyBox with AsksGuarded, KeptUnd
   // A box sized by its CONTENT treats a percentage height as `auto` while
   // it asks (css-sizing-3 5.2.1), so both answers are the child's own.
   @override
-  double computeMinIntrinsicHeight(double width) => child?.getMinIntrinsicHeight(width) ?? 0.0;
+  double computeMinIntrinsicHeight(double width) =>
+      guardedSize(child, () => child?.getMinIntrinsicHeight(width) ?? 0.0);
 
   @override
-  double computeMaxIntrinsicHeight(double width) => child?.getMaxIntrinsicHeight(width) ?? 0.0;
+  double computeMaxIntrinsicHeight(double width) =>
+      guardedSize(child, () => child?.getMaxIntrinsicHeight(width) ?? 0.0);
 
   @override
   @protected

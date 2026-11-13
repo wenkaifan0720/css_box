@@ -1304,7 +1304,7 @@ class RenderLineBox extends RenderProxyBox with DryLastBaseline, PassesBaseline,
   double _width(double width) => _keepWords && !_anywhere ? math.max(width, _lineFloor(width)) : width;
 
   /// [_width], for a box above that sets the lines' breaks.
-  double linesWidth(double width) => _width(width);
+  double linesWidth(double width) => _asked(() => _width(width));
 
   /// The line box CSS gives a line holding nothing but atomic inlines, as
   /// its height and its baseline, for the questions asked BEFORE layout --
@@ -1330,6 +1330,18 @@ class RenderLineBox extends RenderProxyBox with DryLastBaseline, PassesBaseline,
   /// at `vertical-align: -4px` on a 32px line reached 0.73px over the
   /// strut's ascent, and every row of a feature table measured by an
   /// `IntrinsicHeight` stood that much taller than its 32px line.
+  ///
+  /// BUT ONLY WHERE NOTHING ON IT REACHES PAST THE STRUT. A box that does
+  /// is laid out where Skia placed it, and the line is read off the boxes
+  /// ([_exact]), which hold it to the strut where Skia drew the strut's
+  /// own line and to the boxes where it did not -- a line of a fractional
+  /// height is one Skia rounds, and reads as one it did not. Asked before
+  /// layout it is the same reading on a dry paragraph ([_dryExact]). A
+  /// pricing page's gradient label is a box on a 25.59375px forced line
+  /// whose own text a larger text scale raises: laid out it came to 31,
+  /// asked it answered the strut's 25.6, and the column the label stood
+  /// in, measured by its line, overflowed by 5.4
+  /// (`test/linebox_forced_strut_reach_test.dart`).
   ///
   /// Null where the line has text on it, does not fit on one line, or
   /// centres a box on it.
@@ -1369,7 +1381,10 @@ class RenderLineBox extends RenderProxyBox with DryLastBaseline, PassesBaseline,
       box = child.childAfter(box);
     }
     if (box != null || across > width + 0.01) return null;
-    if (child.strutStyle?.forceStrutHeight ?? false) return (lh, a);
+    if (child.strutStyle?.forceStrutHeight ?? false) {
+      final reaches = up > a + _floatNoise || down > lh - a + _floatNoise || edged > lh + _floatNoise;
+      return reaches ? null : (lh, a);
+    }
     return edged > up + down ? (edged, null) : (up + down, up);
   }
 

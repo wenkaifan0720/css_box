@@ -117,6 +117,7 @@ class FloatSlot extends ParentDataWidget<FloatFlowParentData> {
     this.autoRight = false,
     this.contentBox = false,
     this.frame = EdgeInsets.zero,
+    this.frameShare = EdgeInsets.zero,
     this.onLine = false,
     this.lifted = false,
     required super.child,
@@ -201,6 +202,21 @@ class FloatSlot extends ParentDataWidget<FloatFlowParentData> {
   /// child is asked in content-box terms and its answer is framed.
   final EdgeInsets frame;
 
+  /// [frame] where the page wrote the padding as a SHARE of the containing
+  /// block's width, on every side, the top and the bottom included (CSS 2.1
+  /// 8.4): the flow's content width, which the pass knows where it lays the
+  /// child out and the child does not -- a float is laid out at a width of
+  /// its own, which says nothing of the block's. Resolved, it is added to
+  /// [frame]; while the flow's own width is being worked out it is a share
+  /// of nothing and comes to nothing (css-sizing-3 5.2.1), as a [marginShare]
+  /// does. The child is asked in content-box terms and laid out at the
+  /// whole box, the share and all, as with [frame] -- but it cannot pad what
+  /// it holds by a share it is never told, so this is for a child with
+  /// nothing inside to place: an empty float, such as a ratio spacer,
+  /// `float: left; width: 1px; padding-bottom: 56.25%` held in by a clear
+  /// after it, which stands its flow at 16:9 of the flow's width.
+  final EdgeInsets frameShare;
+
   /// A float met in the middle of a line: its top is that line's, and the
   /// words before it stay beside it (CSS 2.1 9.5.1 rule 6). The child
   /// follows the [FloatText] whose line it stands on, which holds its place
@@ -242,6 +258,7 @@ class FloatSlot extends ParentDataWidget<FloatFlowParentData> {
         d.autoRight != autoRight ||
         d.contentBox != contentBox ||
         d.frame != frame ||
+        d.frameShare != frameShare ||
         d.onLine != onLine;
     if (d.lifted != lifted) {
       d.lifted = lifted;
@@ -277,6 +294,7 @@ class FloatSlot extends ParentDataWidget<FloatFlowParentData> {
       ..autoRight = autoRight
       ..contentBox = contentBox
       ..frame = frame
+      ..frameShare = frameShare
       ..onLine = onLine;
     final parent = renderObject.parent;
     if (parent is RenderObject) parent.markNeedsLayout();
@@ -301,6 +319,7 @@ class FloatFlowParentData extends ContainerBoxParentData<RenderBox> {
   EdgeInsets marginShare = EdgeInsets.zero;
   bool autoLeft = false, autoRight = false, contentBox = false, onLine = false, lifted = false;
   EdgeInsets frame = EdgeInsets.zero;
+  EdgeInsets frameShare = EdgeInsets.zero;
 }
 
 // ================================================================= the box
@@ -1247,6 +1266,23 @@ class _Node {
     _K.leaf => data?.frame ?? EdgeInsets.zero,
   };
 
+  /// [padding] with the slot's [FloatSlot.frameShare] of [basis], the
+  /// containing block's width, added: a share of nothing is nothing.
+  EdgeInsets padIn(double? basis) {
+    final share = data?.frameShare ?? EdgeInsets.zero;
+    if (share == EdgeInsets.zero || basis == null || !basis.isFinite) return padding;
+    return padding + share * basis;
+  }
+
+  /// The frame the child holds round its content, [FloatSlot.frameShare]
+  /// of [basis] and all (see [padIn]).
+  EdgeInsets frameIn(double? basis) {
+    final frame = data?.frame ?? EdgeInsets.zero;
+    final share = data?.frameShare ?? EdgeInsets.zero;
+    if (share == EdgeInsets.zero || basis == null || !basis.isFinite) return frame;
+    return frame + share * basis;
+  }
+
   /// Whether the node's sizes are content-box ones (`box-sizing`), which
   /// only a share of the containing block makes them.
   bool get contentBox {
@@ -1556,7 +1592,7 @@ class _Pass {
   _Res lay(_Node n, _In i, _Ctx? ctx) {
     switch (n.kind) {
       case _K.leaf:
-        return leaf(n, i, (kw, kh, aw, ah) => measure(n, kw, kh, aw));
+        return leaf(n, i, (kw, kh, aw, ah) => measure(n, kw, kh, aw, i.pw));
       case _K.flow:
         // A box with nothing in it is a leaf of no size.
         if (n.kids.isEmpty) return leaf(n, i, (kw, kh, aw, ah) => Size.zero, heldWidth: false);
@@ -1579,7 +1615,7 @@ class _Pass {
     final pw = i.pw, ph = i.ph;
     final ml = n.mLeft(pw) ?? 0.0, mr = n.mRight(pw) ?? 0.0;
     final mt = n.mTop(pw) ?? 0.0, mb = n.mBottom(pw) ?? 0.0;
-    final pb = n.padding;
+    final pb = n.padIn(pw);
     final adj = n.contentBox ? pb : EdgeInsets.zero;
     final styleW = i.bare ? null : _plus(n.width(pw), adj.horizontal), styleH = _plus(n.height(ph), adj.vertical);
     final minW = i.bare ? null : _plus(n.minW(pw), adj.horizontal),
@@ -1616,10 +1652,11 @@ class _Pass {
 
   /// A Flutter child answering what the pass asks of its content box: the
   /// child paints its own [FloatSlot.frame], so the question goes out with
-  /// the frame added and the answer comes back with it taken off.
-  Size measure(_Node n, double? kw, double? kh, _Space aw) {
+  /// the frame added and the answer comes back with it taken off -- the
+  /// [FloatSlot.frameShare] of [pw], the containing block's width, with it.
+  Size measure(_Node n, double? kw, double? kh, _Space aw, [double? pw]) {
     final floated = n.inLine || n.floated;
-    final frame = n.data?.frame ?? EdgeInsets.zero;
+    final frame = n.frameIn(pw);
     if (frame == EdgeInsets.zero) return ask(n.child, kw, kh, aw, floated: floated);
     final fx = frame.horizontal, fy = frame.vertical;
     final outer = ask(
@@ -1679,7 +1716,7 @@ class _Pass {
   /// A block container (Taffy `compute_block_layout`): its own sizes, then
   /// its children in its parent's formatting context [ctx], or in a new one.
   _Res block(_Node n, _In i, _Ctx? ctx) {
-    final pb = n.padding;
+    final pb = n.padIn(i.pw);
     final adj = n.contentBox ? pb : EdgeInsets.zero;
     final pw = i.pw, ph = i.ph;
     final minW = i.bare ? null : _plus(n.minW(pw), adj.horizontal),
@@ -1703,7 +1740,7 @@ class _Pass {
 
   /// Taffy `compute_inner`.
   _Res inner(_Node n, _In i, _Ctx ctx) {
-    final pb = n.padding;
+    final pb = n.padIn(i.pw);
     ctx.applyContentInset([pb.left, pb.right]);
     final adj = n.contentBox ? pb : EdgeInsets.zero;
     final pw = i.pw, ph = i.ph;
@@ -1775,7 +1812,7 @@ class _Pass {
   List<_Item> itemsOf(_Node n, double? w, double? h) {
     final out = <_Item>[];
     for (final k in n.kids) {
-      final adj = k.contentBox ? k.padding : EdgeInsets.zero;
+      final adj = k.contentBox ? k.padIn(w) : EdgeInsets.zero;
       var minW = _plus(k.minW(w), adj.horizontal);
       final own = minW;
       (double, double)? fit;
@@ -2155,7 +2192,7 @@ class _Pass {
     final t = n.text!;
     final onLine = n.onLine.length <= t._anchors.length ? n.onLine : n.onLine.sublist(0, t._anchors.length);
     if (!t._hasWords && onLine.isEmpty) return leaf(n, i, (kw, kh, aw, ah) => Size.zero);
-    final pb = n.padding;
+    final pb = n.padIn(i.pw);
     _Laid? laid;
     final out = leaf(n, i, (kw, kh, aw, ah) {
       final w = kw ?? aw.option;
@@ -2421,7 +2458,11 @@ class _Held extends TextParentData {
 
 /// The render object behind [FloatText].
 class RenderFloatText extends RenderBox
-    with ContainerRenderObjectMixin<RenderBox, TextParentData>, AsksGuarded, KeptUnderHatch {
+    with
+        ContainerRenderObjectMixin<RenderBox, TextParentData>,
+        AsksGuarded,
+        KeptUnderHatch,
+        RelayoutWhenSystemFontsChangeMixin {
   RenderFloatText({
     required InlineSpan text,
     required TextStyle style,
@@ -3233,6 +3274,15 @@ class RenderFloatText extends RenderBox
   void _forgetExtents() {
     _extents.clear();
     _lift = null;
+  }
+
+  /// A face that loads after the text was laid out lays it out again, in
+  /// the face: each style's extents ([_extents]) were the fallback face's,
+  /// and the flow that hosts this text lays its lines again ([markNeedsLayout]).
+  @override
+  void systemFontsDidChange() {
+    _forgetExtents();
+    super.systemFontsDidChange();
   }
 
   /// [t]'s leaded extent as Blink sets it: the content area is the face's

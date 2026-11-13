@@ -74,10 +74,12 @@ class RenderFloorBox extends RenderProxyBox with ChildDryBaseline, KeptUnderHatc
   double _told(double content) => content >= _floor ? content : math.max(0.0, _floor - _margin);
 
   @override
-  double computeMinIntrinsicHeight(double width) => _told(super.computeMinIntrinsicHeight(width));
+  double computeMinIntrinsicHeight(double width) =>
+      _told(guardedSize(child, () => super.computeMinIntrinsicHeight(width)));
 
   @override
-  double computeMaxIntrinsicHeight(double width) => _told(super.computeMaxIntrinsicHeight(width));
+  double computeMaxIntrinsicHeight(double width) =>
+      _told(guardedSize(child, () => super.computeMaxIntrinsicHeight(width)));
 
   @override
   Size computeDryLayout(covariant BoxConstraints constraints) {

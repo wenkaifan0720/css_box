@@ -335,8 +335,8 @@ class RenderMultiColumn extends RenderBox
   double _intrinsicWidth({required bool least}) {
     var lo = 0.0, hi = 0.0;
     for (final c in _kids) {
-      lo = math.max(lo, c.getMinIntrinsicWidth(double.infinity));
-      hi = math.max(hi, c.getMaxIntrinsicWidth(double.infinity));
+      lo = math.max(lo, guardedSize(c, () => c.getMinIntrinsicWidth(double.infinity)));
+      hi = math.max(hi, guardedSize(c, () => c.getMaxIntrinsicWidth(double.infinity)));
     }
     final w = _width;
     if (w != null) {
@@ -360,7 +360,9 @@ class RenderMultiColumn extends RenderBox
     if (kids.isEmpty) return 0;
     final room = width.isFinite ? width : getMaxIntrinsicWidth(double.infinity);
     final (n, w) = _columns(room);
-    final heights = [for (final c in kids) least ? c.getMinIntrinsicHeight(w) : c.getMaxIntrinsicHeight(w)];
+    final heights = [
+      for (final c in kids) guardedSize(c, () => least ? c.getMinIntrinsicHeight(w) : c.getMaxIntrinsicHeight(w)),
+    ];
     return _plan(heights, n).height;
   }
 
@@ -371,7 +373,7 @@ class RenderMultiColumn extends RenderBox
     if (kids.isEmpty) return constraints.constrain(Size(room, 0));
     final (n, w) = _columns(room);
     final inner = BoxConstraints.tightFor(width: w);
-    final plan = _plan([for (final c in kids) c.getDryLayout(inner).height], n);
+    final plan = _plan([for (final c in kids) guardedSize(c, () => c.getDryLayout(inner)).height], n);
     return constraints.constrain(Size(room, plan.height));
   }
 

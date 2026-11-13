@@ -2568,7 +2568,8 @@ class RenderInlineFlow extends RenderBox
         DryLastBaseline,
         AsksGuarded,
         KeptUnderHatch,
-        PaintOrder {
+        PaintOrder,
+        RelayoutWhenSystemFontsChangeMixin {
   RenderInlineFlow({
     required List<InlineNode> content,
     required InlineFont font,
@@ -2716,6 +2717,17 @@ class RenderInlineFlow extends RenderBox
     _flatCache = null;
     markNeedsLayout();
     markNeedsSemanticsUpdate();
+  }
+
+  /// A face that loads after the words were measured (a font the app
+  /// fetches, or loads from a file, as it runs) measures them again, in the
+  /// face: the widths kept for each word ([_Measure]) and the content
+  /// flattened over them were the fallback face's.
+  @override
+  void systemFontsDidChange() {
+    _measure = _Measure();
+    _flatCache = null;
+    super.systemFontsDidChange();
   }
 
   /// The content flattened, once for each content: a content flattened

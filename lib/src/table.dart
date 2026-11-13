@@ -428,7 +428,7 @@ class RenderTableSlot extends RenderShiftedBox with AsksGuarded, KeptUnderHatch 
     final w = constraints.maxWidth;
     final tall = constraints.minHeight >= constraints.maxHeight ? constraints.maxHeight : null;
     if (tall != null) return Size(w, tall);
-    return Size(w, child?.getDryLayout(constraints).height ?? 0);
+    return Size(w, guardedSize(child, () => child?.getDryLayout(constraints).height) ?? 0);
   }
 
   @override
@@ -1468,10 +1468,12 @@ class RenderTableCaptions extends RenderBox
   }
 
   @override
-  double computeMinIntrinsicHeight(double width) => _height(width, (c, w) => c.getMinIntrinsicHeight(w));
+  double computeMinIntrinsicHeight(double width) =>
+      _height(width, (c, w) => guardedSize(c, () => c.getMinIntrinsicHeight(w)));
 
   @override
-  double computeMaxIntrinsicHeight(double width) => _height(width, (c, w) => c.getMaxIntrinsicHeight(w));
+  double computeMaxIntrinsicHeight(double width) =>
+      _height(width, (c, w) => guardedSize(c, () => c.getMaxIntrinsicHeight(w)));
 
   /// The table box's constraints: never narrower than CAPMIN, where the
   /// room allows.

@@ -308,7 +308,10 @@ class RenderBlockEllipsis extends RenderProxyBox with DryLastBaseline, AsksGuard
   /// [kept] of its lines ([_heightAt]), the same before the clamp has told
   /// it and after: for the clamp's own height ([RenderLineClamp._cutHeight]).
   double _keptHeight(BoxConstraints constraints, int kept) {
-    final h = _heightAt(constraints.maxWidth, kept) ?? child?.getDryLayout(constraints).height ?? 0.0;
+    final h =
+        _heightAt(constraints.maxWidth, kept) ??
+        guardedSize(child, () => child?.getDryLayout(constraints).height) ??
+        0.0;
     return constraints.constrainHeight(h);
   }
 
@@ -700,7 +703,7 @@ class RenderBlockEllipsis extends RenderProxyBox with DryLastBaseline, AsksGuard
     final p = _paragraph();
     return p != null && _made != null && p.text == _made
         ? _whole(p, max: false)
-        : super.computeMinIntrinsicWidth(height);
+        : guardedSize(child, () => super.computeMinIntrinsicWidth(height));
   }
 
   @override
@@ -708,21 +711,25 @@ class RenderBlockEllipsis extends RenderProxyBox with DryLastBaseline, AsksGuard
     final p = _paragraph();
     return p != null && _made != null && p.text == _made
         ? _whole(p, max: true)
-        : super.computeMaxIntrinsicWidth(height);
+        : guardedSize(child, () => super.computeMaxIntrinsicWidth(height));
   }
 
   @override
   double computeMinIntrinsicHeight(double width) {
     if (_heightAhead(width) case final h?) return h;
     final p = _paragraph();
-    return _cutElsewhere(p, width) || _clamping ? _clampedHeight(p!, width) : super.computeMinIntrinsicHeight(width);
+    return _cutElsewhere(p, width) || _clamping
+        ? _clampedHeight(p!, width)
+        : guardedSize(child, () => super.computeMinIntrinsicHeight(width));
   }
 
   @override
   double computeMaxIntrinsicHeight(double width) {
     if (_heightAhead(width) case final h?) return h;
     final p = _paragraph();
-    return _cutElsewhere(p, width) || _clamping ? _clampedHeight(p!, width) : super.computeMaxIntrinsicHeight(width);
+    return _cutElsewhere(p, width) || _clamping
+        ? _clampedHeight(p!, width)
+        : guardedSize(child, () => super.computeMaxIntrinsicHeight(width));
   }
 
   // THE CUT KEEPS THE LINE COUNT, so the child answers for itself at the
@@ -732,11 +739,11 @@ class RenderBlockEllipsis extends RenderProxyBox with DryLastBaseline, AsksGuard
     final child = this.child;
     if (child == null) return constraints.smallest;
     if (_heightAhead(constraints.maxWidth) case final h?) {
-      return constraints.constrain(Size(child.getDryLayout(constraints).width, h));
+      return constraints.constrain(Size(guardedSize(child, () => child.getDryLayout(constraints)).width, h));
     }
     final p = _paragraph();
     if (!(_cutElsewhere(p, constraints.maxWidth) || _clamping) || !constraints.maxWidth.isFinite) {
-      return constraints.constrain(child.getDryLayout(constraints));
+      return constraints.constrain(guardedSize(child, () => child.getDryLayout(constraints)));
     }
     final painter = _painter(p!, _source!, maxLines: _lines)
       ..layout(minWidth: constraints.minWidth, maxWidth: constraints.maxWidth);
@@ -983,16 +990,17 @@ class RenderLineClamp extends RenderProxyBox with ChildDryBaseline, KeptUnderHat
   Size computeDryLayout(covariant BoxConstraints constraints) {
     final c = child;
     if (c == null) return constraints.smallest;
-    final whole = c.getDryLayout(constraints);
-    final cut = _cutHeight(constraints);
+    final (whole, cut) = guardedSize(c, () => (c.getDryLayout(constraints), _cutHeight(constraints)));
     return constraints.constrain(cut == null ? whole : Size(whole.width, math.min(whole.height, cut)));
   }
 
   @override
-  double computeMinIntrinsicHeight(double width) => _cutIntrinsic(width, super.computeMinIntrinsicHeight(width));
+  double computeMinIntrinsicHeight(double width) =>
+      guardedSize(child, () => _cutIntrinsic(width, super.computeMinIntrinsicHeight(width)));
 
   @override
-  double computeMaxIntrinsicHeight(double width) => _cutIntrinsic(width, super.computeMaxIntrinsicHeight(width));
+  double computeMaxIntrinsicHeight(double width) =>
+      guardedSize(child, () => _cutIntrinsic(width, super.computeMaxIntrinsicHeight(width)));
 
   double _cutIntrinsic(double width, double whole) {
     final cut = width.isFinite ? _cutHeight(BoxConstraints.tightFor(width: width)) : null;

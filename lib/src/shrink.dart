@@ -201,11 +201,35 @@ class RenderShrinkWidth extends RenderProxyBox with DryLastBaseline, AsksGuarded
     // box laid out asks its content and the intrinsic question need not
     // say the same: a column that wraps into two answers one column's
     // width, and a ratio no width at all.
+    // OFFERED NO HEIGHT EITHER, the box laid out with no bound at all has
+    // no bound on either axis, which a box of a ratio cannot be laid out
+    // in: `RenderAspectRatio` asserts in a debug build, and in release
+    // answers an infinite width, which took the whole room. It is laid out
+    // in the width it is offered instead. One that takes all of that width
+    // fills whatever it is handed -- a ratio with no height to transfer --
+    // and is as wide as its content (css-sizing-4 5.1), what the intrinsic
+    // question answers: an absolutely positioned `aspect-ratio` box past
+    // `left: 50%`, round a 120px picture, is 120 wide, where a debug build
+    // drew a red screen. Short of that width, it is the wider of the two:
+    // words that wrap in it want their lines unwrapped, which the intrinsic
+    // question answers; and a turned box (`writing-mode: vertical-rl`)
+    // under a height cap sets its lines as columns at the cap, which only
+    // layout sees -- `RenderConstrainedBox` asks what it holds at the
+    // height it was asked, not the one it caps, and at no height the
+    // turned lines never wrap: a column short (css-writing-modes-4 7.3).
     final at = _atHeight && constraints.hasTightHeight ? constraints.maxHeight : double.infinity;
     return guardedSize(child, () {
-      final wanted = slot
-          ? child.getDryLayout(BoxConstraints(maxHeight: constraints.maxHeight)).width
-          : child.getMaxIntrinsicWidth(at);
+      final double wanted;
+      if (slot && constraints.hasBoundedHeight) {
+        wanted = child.getDryLayout(BoxConstraints(maxHeight: constraints.maxHeight)).width;
+      } else if (slot && constraints.hasBoundedWidth) {
+        final offered = constraints.maxWidth;
+        final laid = child.getDryLayout(BoxConstraints(maxWidth: offered)).width;
+        final asked = child.getMaxIntrinsicWidth(at);
+        wanted = laid < offered ? math.max(laid, asked) : asked;
+      } else {
+        wanted = child.getMaxIntrinsicWidth(at);
+      }
       if (!constraints.hasBoundedWidth) return constraints.constrainWidth(wanted.isFinite ? wanted : 0.0);
       final least = _floor ?? child.getMinIntrinsicWidth(at);
       final f = _roomFactor;

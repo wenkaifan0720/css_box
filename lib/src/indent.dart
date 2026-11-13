@@ -196,7 +196,7 @@ void _release(_Laid? l) {
 }
 
 /// The render object behind [IndentedText].
-class RenderIndentedText extends RenderBox with AsksGuarded, KeptUnderHatch {
+class RenderIndentedText extends RenderBox with AsksGuarded, KeptUnderHatch, RelayoutWhenSystemFontsChangeMixin {
   RenderIndentedText({
     required TextSpan text,
     required TextStyle style,
@@ -346,6 +346,15 @@ class RenderIndentedText extends RenderBox with AsksGuarded, KeptUnderHatch {
     _extent = null;
     _least = null;
     markNeedsLayout();
+  }
+
+  /// A face that loads after the words were laid out lays them out again,
+  /// in the face: the paragraph measured whole ([_whole]) and the widths read
+  /// off it were the fallback face's.
+  @override
+  void systemFontsDidChange() {
+    super.systemFontsDidChange();
+    _dirty();
   }
 
   TextPainter _painter(TextSpan words, {int? maxLines}) => TextPainter(

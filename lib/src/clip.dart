@@ -265,10 +265,12 @@ class RenderClipBox extends RenderClipRRect with DryLastBaseline, KeptUnderHatch
   }
 
   @override
-  double computeMinIntrinsicWidth(double height) => horizontal && floors ? 0.0 : super.computeMinIntrinsicWidth(height);
+  double computeMinIntrinsicWidth(double height) =>
+      horizontal && floors ? 0.0 : guardedSize(child, () => super.computeMinIntrinsicWidth(height));
 
   @override
-  double computeMinIntrinsicHeight(double width) => vertical && floors ? 0.0 : super.computeMinIntrinsicHeight(width);
+  double computeMinIntrinsicHeight(double width) =>
+      vertical && floors ? 0.0 : guardedSize(child, () => super.computeMinIntrinsicHeight(width));
 
   // A scroll container's baseline is its content's, held inside its own
   // box (csswg-drafts#7660): text scrolled out of view does not drag the
@@ -291,7 +293,8 @@ class RenderClipBox extends RenderClipRRect with DryLastBaseline, KeptUnderHatch
 
   @override
   double? computeDryBaseline(covariant BoxConstraints constraints, TextBaseline baseline) {
-    final b = super.computeDryBaseline(constraints, baseline);
+    final c = child;
+    final b = c == null ? null : guardedWhereProxiesAssert(c, () => super.computeDryBaseline(constraints, baseline));
     return b == null || !vertical ? b : b.clamp(0.0, guardedSize(this, () => getDryLayout(constraints)).height);
   }
 

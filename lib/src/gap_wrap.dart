@@ -4,6 +4,8 @@ library;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import 'dry.dart';
+
 /// [Wrap], ASKED ITS LENGTH ALONG ITS RUNS, COUNTING ITS [spacing].
 ///
 /// A wrapping flex container's max-content main size is its items'
@@ -70,9 +72,9 @@ class RenderGapWrap extends RenderWrap {
 
   @override
   double computeMaxIntrinsicWidth(double height) =>
-      super.computeMaxIntrinsicWidth(height) + (direction == Axis.horizontal ? _gaps : 0);
+      guardedSize(this, () => super.computeMaxIntrinsicWidth(height)) + (direction == Axis.horizontal ? _gaps : 0);
 
   @override
   double computeMaxIntrinsicHeight(double width) =>
-      super.computeMaxIntrinsicHeight(width) + (direction == Axis.vertical ? _gaps : 0);
+      guardedSize(this, () => super.computeMaxIntrinsicHeight(width)) + (direction == Axis.vertical ? _gaps : 0);
 }

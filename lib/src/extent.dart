@@ -55,8 +55,9 @@ class RenderDocumentExtent extends RenderProxyBox with ChildDryBaseline, KeptUnd
   }
 
   @override
-  Size computeDryLayout(covariant BoxConstraints constraints) =>
-      child == null ? constraints.smallest : constraints.constrain(child!.getDryLayout(constraints));
+  Size computeDryLayout(covariant BoxConstraints constraints) => child == null
+      ? constraints.smallest
+      : constraints.constrain(guardedSize(child, () => child!.getDryLayout(constraints)));
 }
 
 /// The furthest edge on [axis] -- the lowest bottom, or the rightmost right

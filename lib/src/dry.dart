@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show internal;
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart' show Ticker, TickerCallback, TickerProvider;
 
 /// A child's dry baseline, or null where it has none.
 ///
@@ -52,8 +53,9 @@ T guardedAsk<T>(RenderBox child, T Function() ask) => _hatched(child, true, ask)
 /// What [ask] answers, asked of [child] through [guardedAsk] where Flutter's
 /// proxies assert over a child that answers no dry baseline (flutter#189711,
 /// 3.41 to 3.47); on every other Flutter under the hatch only where the
-/// question reaches an `Align` asked a dry baseline, and as it is
-/// everywhere else.
+/// question reaches an `Align` asked a dry baseline or another box that
+/// answers nothing dry ([_answersNoDry]) -- a `LayoutBuilder`, whatever it
+/// is asked -- and as it is everywhere else.
 ///
 /// For a question that can reach an assert through that bug, or through
 /// an `Align` -- a size asked of a paragraph, which asks each span's box on
@@ -74,9 +76,10 @@ T guardedAsk<T>(RenderBox child, T Function() ask) => _hatched(child, true, ask)
 /// is an `Align`, and the line, asked its height by the row round it,
 /// threw at 1440 in a debug build of 3.38, and every layout under it after
 /// (`test/linebox_align_span_dry_test.dart`). So there the walk looks for
-/// that box alone ([_answersUnguarded], `alignsOnly`): a box it cannot
-/// vouch for is asked as it always was. In release the `Align` answers
-/// none, and under the hatch it answers the same.
+/// that box alone, and for the others that answer nothing dry
+/// ([_answersUnguarded], `alignsOnly`): a box it cannot vouch for is asked
+/// as it always was. In release the `Align` answers none, and under the
+/// hatch it answers the same.
 ///
 /// NEGATIVE: a `Padding` answers its child's dry baseline and the hatch
 /// stays shut.
@@ -117,11 +120,17 @@ T guardedWhereProxiesAssert<T>(RenderBox child, T Function() ask) =>
 ///
 /// NEGATIVE: the same button in a row on its centre line keeps the hatch
 /// shut, and so do an inline button whose icon stands on its edge and a
-/// row a stack places; Flutter keeps what it measured. On every other
-/// Flutter, and in release, nothing is guarded: a size reaches nothing the
-/// hatch is for.
+/// row a stack places; Flutter keeps what it measured.
+///
+/// ON EVERY OTHER FLUTTER A SIZE IS GUARDED WHERE IT REACHES A BOX THAT
+/// ANSWERS NOTHING DRY ([_answersNoDry]): a `LayoutBuilder`, whatever it is
+/// asked, and a box with no dry baseline of its own asked one. The walk
+/// looks for those alone ([guardedWhereProxiesAssert]'s walk), and the
+/// hatch stays shut everywhere else, as it was. In release nothing is
+/// guarded.
 @internal
-T guardedSize<T>(RenderBox? box, T Function() ask) => box == null || !_proxyAsksBox ? ask() : _hatched(box, false, ask);
+T guardedSize<T>(RenderBox? box, T Function() ask) =>
+    box == null ? ask() : _hatched(box, false, ask, alignsOnly: !_proxyAsksBox);
 
 /// What [ask] answers, asked of [box] -- a dry baseline ([baseline]), or a
 /// size alone -- under Flutter's `debugCheckingIntrinsics` hatch where the
@@ -303,14 +312,22 @@ mixin AsksGuarded on RenderBox {}
 /// (`test/linebox_atom_alone_measured_share_test.dart`, n5).
 ///
 /// [alignsOnly] answers false only where the question reaches an `Align`
-/// asked a dry baseline, which asserts on every Flutter: a box nobody here
-/// knows is asked as it always was, and what it holds is not followed
-/// ([guardedWhereProxiesAssert]).
+/// asked a dry baseline, which asserts on every Flutter, or another box
+/// that answers nothing dry ([_answersNoDry]): a box nobody here knows is
+/// asked as it always was, and what it holds is not followed
+/// ([guardedWhereProxiesAssert]) -- but for a scroll view, a rotated box and
+/// an animated size asked a size, which hand it on to what they hold as a
+/// proxy does ([_handsSizeOn]).
+///
+/// IN EVERY WALK A BOX THAT ANSWERS NOTHING DRY ([_answersNoDry]) opens the
+/// hatch: asked outside it, it asserts on every Flutter, whatever else the
+/// walk vouches for.
 bool _answersUnguarded(RenderBox box, {bool baseline = true, bool alignsOnly = false}) {
   final sized = !baseline;
   final todo = <(RenderObject, bool)>[(box, baseline)];
   while (todo.isNotEmpty) {
     final (o, baseline) = todo.removeLast();
+    if (_answersNoDry(o, baseline: baseline)) return false;
     // Whether what [o] holds may be asked a baseline.
     final bool asks;
     if (o is AsksGuarded) {
@@ -358,7 +375,8 @@ bool _answersUnguarded(RenderBox box, {bool baseline = true, bool alignsOnly = f
       asks = false;
     } else if (alignsOnly) {
       if (baseline && o is RenderPositionedBox) return false;
-      continue;
+      if (baseline || !_handsSizeOn(o)) continue;
+      asks = false;
     } else if (sized) {
       asks = true;
     } else {
@@ -375,6 +393,93 @@ bool _answersUnguarded(RenderBox box, {bool baseline = true, bool alignsOnly = f
     o.visitChildren((c) => todo.add((c, asks)));
   }
   return true;
+}
+
+/// Whether [o], asked a dry baseline ([baseline]) or a size, answers by
+/// asserting outside the hatch -- and under it, with what a release build
+/// answers.
+///
+/// A BOX THAT RUNS ITS OWN LAYOUT CALLBACK ANSWERS NOTHING DRY, whatever it
+/// is asked: a `LayoutBuilder` builds what it holds when it is laid out, and
+/// asked a dry size, a dry baseline or an intrinsic one it throws "The
+/// _RenderLayoutBuilder class does not support dry layout" on every
+/// Flutter. Release builds answer for it a zero size and no baseline. A
+/// page lowered to widgets puts one where a box is placed at a share of its
+/// stack's height; a membership site's article cards stand such a stack on
+/// a line's baseline, and the line, asked its size by the flex line round
+/// it, threw at its first layout -- the page drew nothing at either width
+/// (`test/linebox_layout_builder_span_dry_test.dart`).
+///
+/// A BOX WITH NO DRY BASELINE OF ITS OWN ASKED ONE: `RenderBox`'s own
+/// answer asserts. Flutter 3.38.5 and 3.47.6 give none to a picture, a
+/// flow, a custom multi-child layout, a rotated box, a scroll view and
+/// every viewport, a texture, a platform view, an error box and the
+/// performance overlay; 3.38.5 to an `Align` and an animated size too
+/// ([_alignAsks], [_animatedSizeAsks]). Asked a size a shrink-wrapping
+/// viewport asserts too. A box of anyone else's is not known here, and is
+/// asked as it always was.
+bool _answersNoDry(RenderObject o, {required bool baseline}) =>
+    o is RenderObjectWithLayoutCallbackMixin ||
+    (baseline
+        ? o is RenderImage ||
+              o is RenderFlow ||
+              o is RenderCustomMultiChildLayoutBox ||
+              o is RenderRotatedBox ||
+              o is RenderViewportBase ||
+              o is RenderListWheelViewport ||
+              o is TextureBox ||
+              o is PlatformViewRenderBox ||
+              o is RenderDarwinPlatformView ||
+              o is RenderErrorBox ||
+              o is RenderPerformanceOverlay ||
+              (o is RenderPositionedBox && _alignAsks) ||
+              (o is RenderAnimatedSize && _animatedSizeAsks) ||
+              // Flutter's own, private: a `SingleChildScrollView`'s.
+              o.runtimeType.toString() == '_RenderSingleChildViewport'
+        : o is RenderShrinkWrappingViewport);
+
+/// Whether [o], asked a dry size or an intrinsic one, asks what it holds
+/// the same and nothing else, as a proxy does, though the walk knows it
+/// for none: a `SingleChildScrollView`'s viewport, a rotated box, an
+/// animated size.
+bool _handsSizeOn(RenderObject o) =>
+    o is RenderRotatedBox || o is RenderAnimatedSize || o.runtimeType.toString() == '_RenderSingleChildViewport';
+
+/// Whether an `Align` asked a dry baseline asks `RenderBox.computeDryBaseline`,
+/// which asserts outside the hatch: through Flutter 3.38, not on 3.47.6.
+/// Asked once in debug of one with no child, as [_proxyAsksBox] is.
+final bool _alignAsks = _asksBoxBaseline(RenderPositionedBox.new);
+
+/// Whether an animated size asked a dry baseline asserts, as an `Align`
+/// does ([_alignAsks]).
+final bool _animatedSizeAsks = _asksBoxBaseline(
+  () => RenderAnimatedSize(vsync: const _NoTicks(), duration: Duration.zero),
+);
+
+/// Whether a box [make] makes, with no child, asserts when asked a dry
+/// baseline outside the hatch. False in release.
+bool _asksBoxBaseline(RenderBox Function() make) {
+  var asks = false;
+  assert(() {
+    final box = make();
+    try {
+      box.getDryBaseline(const BoxConstraints(), TextBaseline.alphabetic);
+    } on FlutterError {
+      asks = true;
+    } finally {
+      box.dispose();
+    }
+    return true;
+  }());
+  return asks;
+}
+
+/// The ticker an animated size asked one question needs, which never runs.
+class _NoTicks implements TickerProvider {
+  const _NoTicks();
+
+  @override
+  Ticker createTicker(TickerCallback onTick) => Ticker(onTick);
 }
 
 /// Whether [o] is a box sized by its parent that holds nothing: asked a

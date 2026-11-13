@@ -121,13 +121,21 @@ class RenderFixedWidth extends RenderProxyBox with StatedWidth, DryLastBaseline,
   @override
   double computeMaxIntrinsicWidth(double height) => _width;
 
+  /// The width the child is laid out at in [width] of room: the box's own,
+  /// where the room has it ([_inner]). ASKED IN LESS ROOM THAN ITS WIDTH,
+  /// the box is laid out at the room, and so is its child: answered at its
+  /// own width, a 40px column round an 80px box of text came out 98 tall
+  /// for the 154 its words wrapped to, and an `IntrinsicHeight` round it
+  /// cut the last four lines off.
+  double _laidAt(double width) => _inner(BoxConstraints(maxWidth: width)).maxWidth;
+
   @override
   double computeMinIntrinsicHeight(double width) =>
-      guardedSize(child, () => child?.getMinIntrinsicHeight(_width) ?? 0.0);
+      guardedSize(child, () => child?.getMinIntrinsicHeight(_laidAt(width)) ?? 0.0);
 
   @override
   double computeMaxIntrinsicHeight(double width) =>
-      guardedSize(child, () => child?.getMaxIntrinsicHeight(_width) ?? 0.0);
+      guardedSize(child, () => child?.getMaxIntrinsicHeight(_laidAt(width)) ?? 0.0);
 
   @override
   Size computeDryLayout(covariant BoxConstraints constraints) {

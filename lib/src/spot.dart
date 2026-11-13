@@ -648,20 +648,25 @@ class RenderSpotShift extends RenderShiftedBox with KeptUnderHatch {
   }
 
   @override
-  double computeMinIntrinsicWidth(double height) => _fill ? 0 : child?.getMinIntrinsicWidth(height) ?? 0;
+  double computeMinIntrinsicWidth(double height) =>
+      _fill ? 0 : guardedSize(child, () => child?.getMinIntrinsicWidth(height) ?? 0);
 
   @override
-  double computeMaxIntrinsicWidth(double height) => _fill ? 0 : child?.getMaxIntrinsicWidth(height) ?? 0;
+  double computeMaxIntrinsicWidth(double height) =>
+      _fill ? 0 : guardedSize(child, () => child?.getMaxIntrinsicWidth(height) ?? 0);
 
   @override
-  double computeMinIntrinsicHeight(double width) => _fill ? 0 : child?.getMinIntrinsicHeight(width) ?? 0;
+  double computeMinIntrinsicHeight(double width) =>
+      _fill ? 0 : guardedSize(child, () => child?.getMinIntrinsicHeight(width) ?? 0);
 
   @override
-  double computeMaxIntrinsicHeight(double width) => _fill ? 0 : child?.getMaxIntrinsicHeight(width) ?? 0;
+  double computeMaxIntrinsicHeight(double width) =>
+      _fill ? 0 : guardedSize(child, () => child?.getMaxIntrinsicHeight(width) ?? 0);
 
   @override
-  Size computeDryLayout(covariant BoxConstraints constraints) =>
-      child == null || _fill ? constraints.smallest : constraints.constrain(child!.getDryLayout(constraints));
+  Size computeDryLayout(covariant BoxConstraints constraints) => child == null || _fill
+      ? constraints.smallest
+      : constraints.constrain(guardedSize(child, () => child!.getDryLayout(constraints)));
 
   @override
   void performLayout() {

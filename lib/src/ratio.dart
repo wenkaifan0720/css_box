@@ -134,12 +134,14 @@ class RenderRatioBox extends RenderProxyBox with AsksGuarded, KeptUnderHatch {
       height.isFinite && (height - getMaxIntrinsicHeight(double.infinity)).abs() > _sameHeight;
 
   @override
-  double computeMinIntrinsicWidth(double height) =>
-      _statesHeight(height) ? height * _aspectRatio : child?.getMinIntrinsicWidth(double.infinity) ?? 0.0;
+  double computeMinIntrinsicWidth(double height) => _statesHeight(height)
+      ? height * _aspectRatio
+      : guardedSize(child, () => child?.getMinIntrinsicWidth(double.infinity) ?? 0.0);
 
   @override
-  double computeMaxIntrinsicWidth(double height) =>
-      _statesHeight(height) ? height * _aspectRatio : child?.getMaxIntrinsicWidth(double.infinity) ?? 0.0;
+  double computeMaxIntrinsicWidth(double height) => _statesHeight(height)
+      ? height * _aspectRatio
+      : guardedSize(child, () => child?.getMaxIntrinsicWidth(double.infinity) ?? 0.0);
 
   @override
   double computeMinIntrinsicHeight(double width) => computeMaxIntrinsicHeight(width);

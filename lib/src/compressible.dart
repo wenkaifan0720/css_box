@@ -81,8 +81,10 @@ class RenderCompressible extends RenderProxyBox with ChildDryBaseline, KeptUnder
   }
 
   @override
-  double computeMinIntrinsicHeight(double width) => _height(width) ?? super.computeMinIntrinsicHeight(width);
+  double computeMinIntrinsicHeight(double width) =>
+      _height(width) ?? guardedSize(child, () => super.computeMinIntrinsicHeight(width));
 
   @override
-  double computeMaxIntrinsicHeight(double width) => _height(width) ?? super.computeMaxIntrinsicHeight(width);
+  double computeMaxIntrinsicHeight(double width) =>
+      _height(width) ?? guardedSize(child, () => super.computeMaxIntrinsicHeight(width));
 }
